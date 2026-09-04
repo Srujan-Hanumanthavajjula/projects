@@ -1,25 +1,18 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pathlib import Path
-import hashlib
 import uuid
+
+from app.services.hashing import calculate_sha256
+
 
 router = APIRouter(
     prefix="/dataset",
     tags=["Dataset Integrity"]
 )
 
+
 UPLOAD_DIR = Path("uploads/datasets")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def calculate_sha256(file_path: Path) -> str:
-    sha256 = hashlib.sha256()
-
-    with open(file_path, "rb") as file:
-        while chunk := file.read(1024 * 1024):
-            sha256.update(chunk)
-
-    return sha256.hexdigest()
 
 
 @router.post("/upload")
@@ -49,4 +42,47 @@ async def upload_dataset(file: UploadFile = File(...)):
         "size_bytes": file_size,
         "sha256": sha256_hash,
         "status": "uploaded"
+    }
+
+
+@router.post("/verify")
+async def verify_dataset(
+    file: UploadFile = File(...),
+    expected_sha256: str = ""
+):
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No filename provided"
+        )
+
+    if not expected_sha256:
+        raise HTTPException(
+            status_code=400,
+            detail="Expected SHA-256 hash is required"
+        )
+
+    verification_id = f"VER-{uuid.uuid4().hex[:8].upper()}"
+
+    temp_path = UPLOAD_DIR / f"verify_{verification_id}_{file.filename}"
+
+    with open(temp_path, "wb") as buffer:
+        while chunk := await file.read(1024 * 1024):
+            buffer.write(chunk)
+
+    actual_sha256 = calculate_sha256(temp_path)
+
+    # Remove temporary verification file
+    temp_path.unlink(missing_ok=True)
+
+    is_valid = actual_sha256.lower() == expected_sha256.strip().lower()
+
+    return {
+        "verification_id": verification_id,
+        "filename": file.filename,
+        "expected_sha256": expected_sha256,
+        "actual_sha256": actual_sha256,
+        "integrity_verified": is_valid,
+        "status": "VERIFIED" if is_valid else "TAMPERED"
     }

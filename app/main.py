@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.api.dataset import router as dataset_router
+from app.api.model import router as model_router
 
 
 app = FastAPI(
@@ -11,6 +12,7 @@ app = FastAPI(
 
 # Register API routers
 app.include_router(dataset_router)
+app.include_router(model_router)
 
 
 @app.get("/")

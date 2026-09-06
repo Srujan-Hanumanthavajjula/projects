@@ -43,7 +43,13 @@ def detect_label_anomalies(
     # Check every label entry
     for filename, label in labels.items():
 
-        image_path = dataset_directory / filename
+        # Search recursively so ZIPs containing folders also work
+        image_matches = list(dataset_directory.rglob(filename))
+
+        if image_matches:
+            image_path = image_matches[0]
+        else:
+            image_path = dataset_directory / filename
 
         if not image_path.exists():
             missing_images.append({
@@ -65,7 +71,7 @@ def detect_label_anomalies(
 
             seen.add(filename)
 
-    # Detect suspicious labels using filename/content hints.
+    # Detect suspicious labels using filename hints.
     # This is a lightweight baseline detector.
     for filename, label in labels.items():
 
@@ -87,7 +93,10 @@ def detect_label_anomalies(
                 suspicious_labels.append({
                     "filename": filename,
                     "provided_label": label,
-                    "reason": f"Filename suggests '{word_a}' but label is '{word_b}'"
+                    "reason": (
+                        f"Filename suggests '{word_a}' "
+                        f"but label is '{word_b}'"
+                    )
                 })
 
     return {

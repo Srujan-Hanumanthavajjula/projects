@@ -11,8 +11,14 @@ from app.services.assurance_report import (
     generate_assurance_report
 )
 
+from app.services.assurance_orchestrator import (
+    generate_assurance_decision
+)
+
 from app.database.connection import get_db
 from app.database.crud import create_assurance_assessment
+
+import uuid
 
 
 router = APIRouter(
@@ -48,7 +54,7 @@ class FindingRequest(BaseModel):
 
 
 # ============================================================
-# UNIFIED ASSURANCE REQUEST
+# UNIFIED ASSURANCE REPORT REQUEST
 # ============================================================
 
 class AssuranceReportRequest(BaseModel):
@@ -62,7 +68,16 @@ class AssuranceReportRequest(BaseModel):
 
 
 # ============================================================
-# EXISTING RISK API
+# ORCHESTRATOR REQUEST
+# ============================================================
+
+class OrchestratorRequest(BaseModel):
+    detector_results: dict
+    findings: list[FindingRequest] = []
+
+
+# ============================================================
+# BASIC RISK API
 # ============================================================
 
 @router.post("/risk")
@@ -111,8 +126,6 @@ def create_assurance_report(
         findings=findings
     )
 
-    import uuid
-
     assurance_id = (
         f"ASSURE-{uuid.uuid4().hex[:8].upper()}"
     )
@@ -128,3 +141,28 @@ def create_assurance_report(
     report["database_saved"] = True
 
     return report
+
+
+# ============================================================
+# ASSURANCE ORCHESTRATOR
+# ============================================================
+
+@router.post("/orchestrate")
+def orchestrate_assurance(
+    request: OrchestratorRequest
+):
+
+    findings = [
+        finding.model_dump()
+        for finding in request.findings
+    ]
+
+    result = generate_assurance_decision(
+        detector_results=request.detector_results,
+        findings=findings
+    )
+
+    return {
+        "status": "assurance_completed",
+        "results": result
+    }

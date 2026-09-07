@@ -1,11 +1,16 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pathlib import Path
 import uuid
+
+from sqlalchemy.orm import Session
 
 from app.detectors.model_integrity_detector import (
     calculate_model_hash,
     verify_model_integrity
 )
+
+from app.database.connection import get_db
+from app.database.crud import create_model
 
 
 router = APIRouter(
@@ -18,10 +23,16 @@ MODEL_DIR = Path("uploads/models")
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# ============================================================
+# MODEL UPLOAD
+# ============================================================
+
 @router.post("/upload")
 async def upload_model(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
 ):
+
     if not file.filename:
         raise HTTPException(
             status_code=400,
@@ -32,25 +43,42 @@ async def upload_model(
 
     model_path = MODEL_DIR / f"{model_id}_{file.filename}"
 
+    # Save uploaded model
     with open(model_path, "wb") as buffer:
         while chunk := await file.read(1024 * 1024):
             buffer.write(chunk)
 
+    # Calculate SHA-256
     model_hash = calculate_model_hash(model_path)
+
+    # Save model evidence to PostgreSQL
+    create_model(
+        db=db,
+        model_id=model_id,
+        filename=file.filename,
+        sha256=model_hash,
+        integrity_status="VERIFIED"
+    )
 
     return {
         "model_id": model_id,
         "filename": file.filename,
         "sha256": model_hash,
-        "status": "uploaded"
+        "status": "uploaded",
+        "database_saved": True
     }
 
+
+# ============================================================
+# MODEL VERIFICATION
+# ============================================================
 
 @router.post("/verify")
 async def verify_model(
     file: UploadFile = File(...),
     expected_sha256: str = ""
 ):
+
     if not file.filename:
         raise HTTPException(
             status_code=400,
@@ -68,10 +96,12 @@ async def verify_model(
     temp_path = MODEL_DIR / f"verify_{verification_id}_{file.filename}"
 
     try:
+        # Save temporary model
         with open(temp_path, "wb") as buffer:
             while chunk := await file.read(1024 * 1024):
                 buffer.write(chunk)
 
+        # Verify model integrity
         result = verify_model_integrity(
             temp_path,
             expected_sha256
@@ -87,4 +117,5 @@ async def verify_model(
         }
 
     finally:
+        # Remove temporary verification file
         temp_path.unlink(missing_ok=True)

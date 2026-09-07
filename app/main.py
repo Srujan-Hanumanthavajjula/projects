@@ -7,6 +7,7 @@ from app.api.assurance import router as assurance_router
 from app.api.ood import router as ood_router
 from app.api.trigger import router as trigger_router
 from app.api.model_behavior import router as model_behavior_router
+from app.api.replay import router as replay_router
 
 from app.database.connection import Base, engine
 from app.database import models
@@ -31,6 +32,7 @@ app.include_router(assurance_router)
 app.include_router(ood_router)
 app.include_router(trigger_router)
 app.include_router(model_behavior_router)
+app.include_router(replay_router)
 
 
 @app.get("/")

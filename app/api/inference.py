@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from app.services.audit_service import record_audit_event
 import uuid
 
 from app.services.inference_integrity import (

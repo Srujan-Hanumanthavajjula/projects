@@ -48,19 +48,25 @@ def save_findings(
         saved_findings.append(saved)
 
     return saved_findings
+
+
 def findings_from_detector_results(
     asset_type: str,
     asset_id: str,
     detector_results: dict
 ) -> list[dict]:
-    """
-    Convert detector output into standardized findings.
-    """
 
     findings = []
 
+    # --------------------------------------------------
     # OOD findings
-    for item in detector_results.get("ood_images", []):
+    # --------------------------------------------------
+
+    for item in detector_results.get(
+        "ood_images",
+        []
+    ):
+
         findings.append({
             "asset_type": asset_type,
             "asset_id": asset_id,
@@ -74,8 +80,15 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # Trigger / backdoor indicator findings
-    for item in detector_results.get("suspicious_images", []):
+    # --------------------------------------------------
+    # Trigger indicator findings
+    # --------------------------------------------------
+
+    for item in detector_results.get(
+        "suspicious_images",
+        []
+    ):
+
         findings.append({
             "asset_type": asset_type,
             "asset_id": asset_id,
@@ -89,8 +102,15 @@ def findings_from_detector_results(
             "recommendation": "QUARANTINE"
         })
 
-    # Duplicate findings
-    for item in detector_results.get("exact_duplicates", []):
+    # --------------------------------------------------
+    # Exact duplicate findings
+    # --------------------------------------------------
+
+    for item in detector_results.get(
+        "exact_duplicates",
+        []
+    ):
+
         findings.append({
             "asset_type": asset_type,
             "asset_id": asset_id,
@@ -101,7 +121,15 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    for item in detector_results.get("near_duplicates", []):
+    # --------------------------------------------------
+    # Near duplicate findings
+    # --------------------------------------------------
+
+    for item in detector_results.get(
+        "near_duplicates",
+        []
+    ):
+
         findings.append({
             "asset_type": asset_type,
             "asset_id": asset_id,
@@ -112,8 +140,55 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # Label anomaly findings
-    for item in detector_results.get("suspicious_labels", []):
+    # --------------------------------------------------
+    # Missing image findings
+    # --------------------------------------------------
+
+    for item in detector_results.get(
+        "missing_images",
+        []
+    ):
+
+        findings.append({
+            "asset_type": asset_type,
+            "asset_id": asset_id,
+            "severity": "HIGH",
+            "reason": "Label references an image that does not exist",
+            "evidence": str(item),
+            "confidence": 1.0,
+            "recommendation": "REVIEW"
+        })
+
+    # --------------------------------------------------
+    # Duplicate label findings
+    # --------------------------------------------------
+
+    for filename in detector_results.get(
+        "duplicate_label_entries",
+        []
+    ):
+
+        findings.append({
+            "asset_type": asset_type,
+            "asset_id": asset_id,
+            "severity": "MEDIUM",
+            "reason": "Duplicate label entry detected",
+            "evidence": str({
+                "filename": filename
+            }),
+            "confidence": 1.0,
+            "recommendation": "REVIEW"
+        })
+
+    # --------------------------------------------------
+    # Suspicious label findings
+    # --------------------------------------------------
+
+    for item in detector_results.get(
+        "suspicious_labels",
+        []
+    ):
+
         findings.append({
             "asset_type": asset_type,
             "asset_id": asset_id,
@@ -126,5 +201,33 @@ def findings_from_detector_results(
             "confidence": 0.80,
             "recommendation": "REVIEW"
         })
+
+    # --------------------------------------------------
+    # YOLO annotation findings
+    # --------------------------------------------------
+
+    yolo_validation = detector_results.get(
+        "yolo_annotation_validation"
+    )
+
+    if yolo_validation:
+
+        for item in yolo_validation.get(
+            "invalid_annotations",
+            []
+        ):
+
+            findings.append({
+                "asset_type": asset_type,
+                "asset_id": asset_id,
+                "severity": "HIGH",
+                "reason": item.get(
+                    "reason",
+                    "Invalid YOLO annotation detected"
+                ),
+                "evidence": str(item),
+                "confidence": 1.0,
+                "recommendation": "REVIEW"
+            })
 
     return findings

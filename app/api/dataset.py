@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from app.services.audit_service import record_audit_event
 from pathlib import Path
 import uuid
 import zipfile
@@ -12,6 +13,7 @@ from app.detectors.label_anomaly_detector import detect_label_anomalies
 
 from app.database.connection import get_db
 from app.database.crud import create_dataset
+from app.database.models import Dataset
 
 
 router = APIRouter(
@@ -64,13 +66,22 @@ async def upload_dataset(
         integrity_status="VERIFIED"
     )
 
+    # Record dataset upload in tamper-evident audit trail
+    record_audit_event(
+        db=db,
+        event_type="DATASET_UPLOADED",
+        asset_type="dataset",
+        asset_id=dataset_id
+    )
+
     return {
         "dataset_id": dataset_id,
         "filename": file.filename,
         "size_bytes": file_size,
         "sha256": sha256_hash,
         "status": "uploaded",
-        "database_saved": True
+        "database_saved": True,
+        "audit_event_recorded": True
     }
 
 
@@ -80,8 +91,9 @@ async def upload_dataset(
 
 @router.post("/verify")
 async def verify_dataset(
+    dataset_id: str,
     file: UploadFile = File(...),
-    expected_sha256: str = ""
+    db: Session = Depends(get_db)
 ):
 
     if not file.filename:
@@ -90,10 +102,15 @@ async def verify_dataset(
             detail="No filename provided"
         )
 
-    if not expected_sha256:
+    # Find the registered dataset
+    dataset = db.query(Dataset).filter(
+        Dataset.dataset_id == dataset_id
+    ).first()
+
+    if not dataset:
         raise HTTPException(
-            status_code=400,
-            detail="Expected SHA-256 hash is required"
+            status_code=404,
+            detail="Dataset ID not found"
         )
 
     verification_id = f"VER-{uuid.uuid4().hex[:8].upper()}"
@@ -103,28 +120,49 @@ async def verify_dataset(
         f"verify_{verification_id}_{file.filename}"
     )
 
-    with open(temp_path, "wb") as buffer:
-        while chunk := await file.read(1024 * 1024):
-            buffer.write(chunk)
+    try:
 
-    actual_sha256 = calculate_sha256(temp_path)
+        # Save temporary verification file
+        with open(temp_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                buffer.write(chunk)
 
-    # Remove temporary verification file
-    temp_path.unlink(missing_ok=True)
+        # Calculate hash of newly submitted dataset
+        actual_sha256 = calculate_sha256(temp_path)
 
-    is_valid = (
-        actual_sha256.lower()
-        == expected_sha256.strip().lower()
-    )
+        # Retrieve trusted hash from PostgreSQL
+        expected_sha256 = dataset.sha256
 
-    return {
-        "verification_id": verification_id,
-        "filename": file.filename,
-        "expected_sha256": expected_sha256,
-        "actual_sha256": actual_sha256,
-        "integrity_verified": is_valid,
-        "status": "VERIFIED" if is_valid else "TAMPERED"
-    }
+        # Compare hashes
+        is_valid = (
+            actual_sha256.lower()
+            == expected_sha256.lower()
+        )
+
+        # Record verification audit event
+        record_audit_event(
+            db=db,
+            event_type="DATASET_VERIFIED",
+            asset_type="dataset",
+            asset_id=dataset_id
+        )
+
+        return {
+            "verification_id": verification_id,
+            "dataset_id": dataset_id,
+            "filename": file.filename,
+            "registered_filename": dataset.filename,
+            "expected_sha256": expected_sha256,
+            "actual_sha256": actual_sha256,
+            "integrity_verified": is_valid,
+            "status": "VERIFIED" if is_valid else "TAMPERED",
+            "audit_event_recorded": True
+        }
+
+    finally:
+
+        # Remove temporary verification file
+        temp_path.unlink(missing_ok=True)
 
 
 # ============================================================

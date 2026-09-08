@@ -1,15 +1,10 @@
 def calculate_risk_score(
-    integrity_risk: float = 0,
-    duplicate_risk: float = 0,
-    label_risk: float = 0,
-    model_risk: float = 0,
-    inference_risk: float = 0
+    integrity_risk=0,
+    duplicate_risk=0,
+    label_risk=0,
+    model_risk=0,
+    inference_risk=0
 ) -> float:
-    """
-    Calculate an overall CV integrity risk score.
-
-    Each risk value should be between 0 and 100.
-    """
 
     weights = {
         "integrity": 0.25,
@@ -27,13 +22,27 @@ def calculate_risk_score(
         + inference_risk * weights["inference"]
     )
 
-    return round(min(max(score, 0), 100), 2)
+    return round(
+        min(max(score, 0), 100),
+        2
+    )
 
 
-def get_risk_status(risk_score: float) -> str:
-    """
-    Convert risk score into an assurance decision.
-    """
+def get_risk_status(
+    risk_score: float,
+    integrity_risk: float = 0,
+    model_risk: float = 0,
+    inference_risk: float = 0
+) -> str:
+
+    # Critical integrity/model/inference compromise
+    # must never be averaged down to ACCEPT.
+    if (
+        integrity_risk >= 100
+        or model_risk >= 100
+        or inference_risk >= 100
+    ):
+        return "QUARANTINE"
 
     if risk_score < 40:
         return "ACCEPT"

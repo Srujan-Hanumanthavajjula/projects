@@ -1,4 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from app.services.audit_service import record_audit_event
+from app.database.models import Model
 from pathlib import Path
 import uuid
 
@@ -60,12 +62,21 @@ async def upload_model(
         integrity_status="VERIFIED"
     )
 
+    # Record model upload in tamper-evident audit trail
+    record_audit_event(
+        db=db,
+        event_type="MODEL_UPLOADED",
+        asset_type="model",
+        asset_id=model_id
+    )
+
     return {
         "model_id": model_id,
         "filename": file.filename,
         "sha256": model_hash,
         "status": "uploaded",
-        "database_saved": True
+        "database_saved": True,
+        "audit_event_recorded": True
     }
 
 
@@ -75,8 +86,9 @@ async def upload_model(
 
 @router.post("/verify")
 async def verify_model(
+    model_id: str,
     file: UploadFile = File(...),
-    expected_sha256: str = ""
+    db: Session = Depends(get_db)
 ):
 
     if not file.filename:
@@ -85,37 +97,66 @@ async def verify_model(
             detail="No model filename provided"
         )
 
-    if not expected_sha256:
+    # Find the registered model
+    model = db.query(Model).filter(
+        Model.model_id == model_id
+    ).first()
+
+    if not model:
         raise HTTPException(
-            status_code=400,
-            detail="Expected SHA-256 hash is required"
+            status_code=404,
+            detail="Model ID not found"
         )
 
-    verification_id = f"MODEL-VER-{uuid.uuid4().hex[:8].upper()}"
+    verification_id = (
+        f"MODEL-VER-{uuid.uuid4().hex[:8].upper()}"
+    )
 
-    temp_path = MODEL_DIR / f"verify_{verification_id}_{file.filename}"
+    temp_path = (
+        MODEL_DIR /
+        f"verify_{verification_id}_{file.filename}"
+    )
 
     try:
-        # Save temporary model
+
+        # Save temporary verification model
         with open(temp_path, "wb") as buffer:
             while chunk := await file.read(1024 * 1024):
                 buffer.write(chunk)
 
-        # Verify model integrity
-        result = verify_model_integrity(
-            temp_path,
-            expected_sha256
+        # Calculate hash of newly submitted model
+        actual_sha256 = calculate_model_hash(temp_path)
+
+        # Retrieve trusted hash from PostgreSQL
+        expected_sha256 = model.sha256
+
+        # Compare hashes
+        is_valid = (
+            actual_sha256.lower()
+            == expected_sha256.lower()
+        )
+
+        # Record verification in audit trail
+        record_audit_event(
+            db=db,
+            event_type="MODEL_VERIFIED",
+            asset_type="model",
+            asset_id=model_id
         )
 
         return {
             "verification_id": verification_id,
-            "status": result["status"],
-            "integrity_verified": result["integrity_verified"],
-            "expected_sha256": result["expected_sha256"],
-            "actual_sha256": result["actual_sha256"],
-            "filename": result["model_filename"]
+            "model_id": model_id,
+            "filename": file.filename,
+            "registered_filename": model.filename,
+            "expected_sha256": expected_sha256,
+            "actual_sha256": actual_sha256,
+            "integrity_verified": is_valid,
+            "status": "VERIFIED" if is_valid else "TAMPERED",
+            "audit_event_recorded": True
         }
 
     finally:
-        # Remove temporary verification file
+
+        # Remove temporary verification model
         temp_path.unlink(missing_ok=True)

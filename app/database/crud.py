@@ -6,7 +6,8 @@ from app.database.models import (
     Inference,
     Finding,
     AssuranceAssessment,
-    AuditEvent
+    AuditEvent,
+    ContributorAsset
 )
 
 
@@ -144,3 +145,60 @@ def create_audit_event(
     db.refresh(event)
 
     return event
+# ============================================================
+# CONTRIBUTOR ASSET MAPPING
+# ============================================================
+
+def create_contributor_asset(
+    db: Session,
+    contributor_id: str,
+    asset_type: str,
+    asset_id: str
+):
+    contributor_asset = ContributorAsset(
+        contributor_id=contributor_id,
+        asset_type=asset_type,
+        asset_id=asset_id
+    )
+
+    db.add(contributor_asset)
+    db.commit()
+    db.refresh(contributor_asset)
+
+    return contributor_asset
+
+
+def get_contributor_assets(
+    db: Session,
+    contributor_id: str
+):
+    return (
+        db.query(ContributorAsset)
+        .filter(
+            ContributorAsset.contributor_id
+            == contributor_id
+        )
+        .all()
+    )
+
+
+def get_findings_for_assets(
+    db: Session,
+    assets: list[ContributorAsset]
+):
+    findings = []
+
+    for asset in assets:
+
+        asset_findings = (
+            db.query(Finding)
+            .filter(
+                Finding.asset_type == asset.asset_type,
+                Finding.asset_id == asset.asset_id
+            )
+            .all()
+        )
+
+        findings.extend(asset_findings)
+
+    return findings

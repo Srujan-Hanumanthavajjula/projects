@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 from app.database.crud import create_finding
 
 
+# ============================================================
+# SAVE SINGLE FINDING
+# ============================================================
+
 def save_finding(
     db: Session,
     asset_type: str,
@@ -24,6 +28,10 @@ def save_finding(
         recommendation=recommendation
     )
 
+
+# ============================================================
+# SAVE MULTIPLE FINDINGS
+# ============================================================
 
 def save_findings(
     db: Session,
@@ -50,6 +58,10 @@ def save_findings(
     return saved_findings
 
 
+# ============================================================
+# CONVERT DETECTOR RESULTS INTO FINDINGS
+# ============================================================
+
 def findings_from_detector_results(
     asset_type: str,
     asset_id: str,
@@ -58,9 +70,9 @@ def findings_from_detector_results(
 
     findings = []
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # OOD findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for item in detector_results.get(
         "ood_images",
@@ -80,9 +92,9 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Trigger indicator findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for item in detector_results.get(
         "suspicious_images",
@@ -102,9 +114,9 @@ def findings_from_detector_results(
             "recommendation": "QUARANTINE"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Exact duplicate findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for item in detector_results.get(
         "exact_duplicates",
@@ -121,9 +133,9 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Near duplicate findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for item in detector_results.get(
         "near_duplicates",
@@ -140,9 +152,9 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Missing image findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for item in detector_results.get(
         "missing_images",
@@ -159,9 +171,9 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Duplicate label findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for filename in detector_results.get(
         "duplicate_label_entries",
@@ -180,9 +192,9 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # Suspicious label findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     for item in detector_results.get(
         "suspicious_labels",
@@ -202,9 +214,9 @@ def findings_from_detector_results(
             "recommendation": "REVIEW"
         })
 
-    # --------------------------------------------------
+    # --------------------------------------------------------
     # YOLO annotation findings
-    # --------------------------------------------------
+    # --------------------------------------------------------
 
     yolo_validation = detector_results.get(
         "yolo_annotation_validation"
@@ -224,6 +236,63 @@ def findings_from_detector_results(
                 "reason": item.get(
                     "reason",
                     "Invalid YOLO annotation detected"
+                ),
+                "evidence": str(item),
+                "confidence": 1.0,
+                "recommendation": "REVIEW"
+            })
+
+    # --------------------------------------------------------
+    # COCO annotation findings
+    # --------------------------------------------------------
+
+    coco_validation = detector_results.get(
+        "coco_annotation_validation"
+    )
+
+    if coco_validation:
+
+        for item in coco_validation.get(
+            "invalid_annotations",
+            []
+        ):
+
+            findings.append({
+                "asset_type": asset_type,
+                "asset_id": asset_id,
+                "severity": "HIGH",
+                "reason": item.get(
+                    "reason",
+                    "Invalid COCO annotation detected"
+                ),
+                "evidence": str(item),
+                "confidence": 1.0,
+                "recommendation": "REVIEW"
+            })
+
+    # --------------------------------------------------------
+    # Replay detection findings
+    # --------------------------------------------------------
+
+    replay_detected = detector_results.get(
+        "replay_detected",
+        False
+    )
+
+    if replay_detected:
+
+        for item in detector_results.get(
+            "replayed_records",
+            []
+        ):
+
+            findings.append({
+                "asset_type": asset_type,
+                "asset_id": asset_id,
+                "severity": "MEDIUM",
+                "reason": item.get(
+                    "reason",
+                    "Repeated inference evidence detected"
                 ),
                 "evidence": str(item),
                 "confidence": 1.0,

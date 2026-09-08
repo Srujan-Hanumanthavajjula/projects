@@ -211,7 +211,8 @@ def verify_binding(
     input_hash: str,
     model_hash: str,
     output_hash: str,
-    expected_binding_hash: str
+    expected_binding_hash: str,
+    db: Session = Depends(get_db)
 ):
 
     result = verify_inference_binding(
@@ -221,9 +222,54 @@ def verify_binding(
         expected_binding_hash=expected_binding_hash
     )
 
+    binding_id = f"BIND-{uuid.uuid4().hex[:8].upper()}"
+
+    finding_saved = False
+    audit_recorded = False
+
+    # --------------------------------------------------------
+    # Handle binding tampering
+    # --------------------------------------------------------
+
+    if not result["binding_verified"]:
+
+        create_finding(
+            db=db,
+            asset_type="inference",
+            asset_id=binding_id,
+            severity="HIGH",
+            reason="Inference input-model-output binding verification failed",
+            evidence=(
+                f"Expected binding hash: "
+                f"{result['expected_binding_hash']}; "
+                f"Actual binding hash: "
+                f"{result['actual_binding_hash']}"
+            ),
+            confidence=1.0,
+            recommendation="QUARANTINE"
+        )
+
+        finding_saved = True
+
+        # ----------------------------------------------------
+        # Record audit event
+        # ----------------------------------------------------
+
+        record_audit_event(
+            db=db,
+            event_type="INFERENCE_BINDING_TAMPER_DETECTED",
+            asset_type="inference",
+            asset_id=binding_id
+        )
+
+        audit_recorded = True
+
     return {
+        "binding_id": binding_id,
         "expected_binding_hash": result["expected_binding_hash"],
         "actual_binding_hash": result["actual_binding_hash"],
         "binding_verified": result["binding_verified"],
-        "status": result["status"]
+        "status": result["status"],
+        "finding_saved": finding_saved,
+        "audit_event_recorded": audit_recorded
     }

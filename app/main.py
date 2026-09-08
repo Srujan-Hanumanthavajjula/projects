@@ -10,6 +10,7 @@ from app.api.model_behavior import router as model_behavior_router
 from app.api.replay import router as replay_router
 from app.api.audit import router as audit_router
 from app.api.findings import router as findings_router
+from app.api.contributor import router as contributor_router
 
 from app.database.connection import Base, engine
 from app.database import models
@@ -37,6 +38,7 @@ app.include_router(model_behavior_router)
 app.include_router(replay_router)
 app.include_router(audit_router)
 app.include_router(findings_router)
+app.include_router(contributor_router)
 
 
 @app.get("/")

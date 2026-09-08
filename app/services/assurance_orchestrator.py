@@ -217,6 +217,29 @@ def calculate_component_risk(
         )
 
     # --------------------------------------------------------
+    # Model format / structural validation
+    # --------------------------------------------------------
+
+    format_valid = detector_results.get(
+        "format_valid"
+    )
+
+    # If format validation was performed and failed,
+    # treat the model as critically risky.
+    if format_valid is False:
+
+        model_risk = max(
+            model_risk,
+            100
+        )
+
+    # If format_valid is missing, do nothing.
+    #
+    # Missing format validation does NOT mean that
+    # the model is invalid. It simply means that this
+    # particular detector result was not provided.
+
+    # --------------------------------------------------------
     # Inference integrity
     # --------------------------------------------------------
 

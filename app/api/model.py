@@ -1,6 +1,15 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+    Depends
+)
+
 from app.services.audit_service import record_audit_event
+
 from app.database.models import Model
+
 from pathlib import Path
 import uuid
 
@@ -9,6 +18,10 @@ from sqlalchemy.orm import Session
 from app.detectors.model_integrity_detector import (
     calculate_model_hash,
     verify_model_integrity
+)
+
+from app.services.model_assurance import (
+    run_model_assurance
 )
 
 from app.database.connection import get_db
@@ -43,15 +56,23 @@ async def upload_model(
 
     model_id = f"MODEL-{uuid.uuid4().hex[:8].upper()}"
 
-    model_path = MODEL_DIR / f"{model_id}_{file.filename}"
+    model_path = (
+        MODEL_DIR /
+        f"{model_id}_{file.filename}"
+    )
 
     # Save uploaded model
     with open(model_path, "wb") as buffer:
-        while chunk := await file.read(1024 * 1024):
+
+        while chunk := await file.read(
+            1024 * 1024
+        ):
             buffer.write(chunk)
 
     # Calculate SHA-256
-    model_hash = calculate_model_hash(model_path)
+    model_hash = calculate_model_hash(
+        model_path
+    )
 
     # Save model evidence to PostgreSQL
     create_model(
@@ -120,12 +141,20 @@ async def verify_model(
     try:
 
         # Save temporary verification model
-        with open(temp_path, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
+        with open(
+            temp_path,
+            "wb"
+        ) as buffer:
+
+            while chunk := await file.read(
+                1024 * 1024
+            ):
                 buffer.write(chunk)
 
         # Calculate hash of newly submitted model
-        actual_sha256 = calculate_model_hash(temp_path)
+        actual_sha256 = calculate_model_hash(
+            temp_path
+        )
 
         # Retrieve trusted hash from PostgreSQL
         expected_sha256 = model.sha256
@@ -152,11 +181,128 @@ async def verify_model(
             "expected_sha256": expected_sha256,
             "actual_sha256": actual_sha256,
             "integrity_verified": is_valid,
-            "status": "VERIFIED" if is_valid else "TAMPERED",
+            "status": (
+                "VERIFIED"
+                if is_valid
+                else "TAMPERED"
+            ),
             "audit_event_recorded": True
         }
 
     finally:
 
         # Remove temporary verification model
-        temp_path.unlink(missing_ok=True)
+        temp_path.unlink(
+            missing_ok=True
+        )
+
+
+# ============================================================
+# MODEL ASSURANCE
+# ============================================================
+
+@router.post("/assurance")
+async def model_assurance(
+    file: UploadFile = File(...)
+):
+    """
+    Perform model-format detection and structural validation.
+
+    This endpoint does not modify the registered model.
+
+    It checks:
+    - Model format
+    - Structural validity
+    - Model risk
+    - Findings
+    """
+
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No model filename provided"
+        )
+
+    assurance_id = (
+        f"MODEL-AS-{uuid.uuid4().hex[:8].upper()}"
+    )
+
+    temp_path = (
+        MODEL_DIR /
+        f"assurance_{assurance_id}_{file.filename}"
+    )
+
+    try:
+
+        # ----------------------------------------------------
+        # Save temporary model
+        # ----------------------------------------------------
+
+        with open(
+            temp_path,
+            "wb"
+        ) as buffer:
+
+            while chunk := await file.read(
+                1024 * 1024
+            ):
+                buffer.write(chunk)
+
+        # ----------------------------------------------------
+        # Run model assurance
+        # ----------------------------------------------------
+
+        assurance_result = run_model_assurance(
+            temp_path
+        )
+
+        # ----------------------------------------------------
+        # Return assurance result
+        # ----------------------------------------------------
+
+        return {
+            "assurance_id": assurance_id,
+            "filename": file.filename,
+
+            "model_format": assurance_result[
+                "model_format"
+            ],
+
+            "format_confidence": assurance_result[
+                "format_confidence"
+            ],
+
+            "format_valid": assurance_result[
+                "format_valid"
+            ],
+
+            "format_reason": assurance_result[
+                "format_reason"
+            ],
+
+            "model_risk": assurance_result[
+                "model_risk"
+            ],
+
+            "findings": assurance_result[
+                "findings"
+            ],
+
+            "status": (
+                "QUARANTINE"
+                if assurance_result["model_risk"] >= 100
+                else "REVIEW"
+                if assurance_result["model_risk"] > 0
+                else "ACCEPT"
+            )
+        }
+
+    finally:
+
+        # ----------------------------------------------------
+        # Remove temporary assurance model
+        # ----------------------------------------------------
+
+        temp_path.unlink(
+            missing_ok=True
+        )

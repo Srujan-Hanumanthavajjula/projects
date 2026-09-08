@@ -73,3 +73,35 @@ class AuditEvent(Base):
     event_hash = Column(String(64), nullable=False)
     previous_hash = Column(String(64))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ============================================================
+# CONTRIBUTOR ASSET MAPPING
+# ============================================================
+
+class ContributorAsset(Base):
+    __tablename__ = "contributor_assets"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    contributor_id = Column(
+        String(100),
+        index=True,
+        nullable=False
+    )
+
+    asset_type = Column(
+        String(50),
+        nullable=False
+    )
+
+    asset_id = Column(
+        String(100),
+        index=True,
+        nullable=False
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now()
+    )

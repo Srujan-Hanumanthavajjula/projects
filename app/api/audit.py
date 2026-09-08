@@ -66,5 +66,14 @@ def verify_chain(
 
     return {
         "status": "verification_completed",
-        "results": result
+        "chain_valid": result["chain_valid"],
+        "total_events": result["total_events"],
+        "invalid_event_count": result["invalid_event_count"],
+        "invalid_events": result["invalid_events"],
+        "message": (
+            "Audit chain is valid and has not been detected as tampered."
+            if result["chain_valid"]
+            else
+            "Audit chain integrity violation detected. Review the invalid events."
+        )
     }
